@@ -2,8 +2,6 @@ package com.example.musicplayer.activity;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -35,7 +33,7 @@ import java.util.List;
 import java.util.concurrent.Executors;
 
 /**
- * 歌单列表页
+ * 歌单列表页 —— 浏览/搜索/添加歌曲
  */
 public class SongListActivity extends AppCompatActivity {
 
@@ -62,17 +60,14 @@ public class SongListActivity extends AppCompatActivity {
         viewModel = new ViewModelProvider(this).get(SongListViewModel.class);
         observeData();
 
-        // 如果有搜索关键词
         if (!TextUtils.isEmpty(keyword)) {
             SearchView sv = findViewById(R.id.search_view);
             sv.setQuery(keyword, true);
         }
 
-        // 如果点了添加按钮
         if (showAdd) {
             showAddSongDialog();
         }
-        // 直接打开在线搜索
         if (openSearch) {
             showOnlineSearchDialog();
         }
@@ -124,7 +119,6 @@ public class SongListActivity extends AppCompatActivity {
             }
         });
 
-        // 初始加载
         if (!TextUtils.isEmpty(keyword)) {
             viewModel.searchSongs(keyword);
         } else {
@@ -139,11 +133,8 @@ public class SongListActivity extends AppCompatActivity {
         startActivity(intent);
     }
 
-    /**
-     * 添加歌曲对话框
-     */
+    /** 手动添加歌曲对话框 */
     private void showAddSongDialog() {
-        // 弹出表单：输入歌名、歌手、专辑、远程URL（可选）
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_add_song, null);
         EditText etTitle = dialogView.findViewById(R.id.et_song_title);
         EditText etArtist = dialogView.findViewById(R.id.et_song_artist);
@@ -168,13 +159,13 @@ public class SongListActivity extends AppCompatActivity {
                         return;
                     }
 
-                    addSong(title, artist, album, url);
+                    addSongToDb(title, artist, album, url);
                 })
                 .setNegativeButton(R.string.cancel, null)
                 .show();
     }
 
-    /** 在线搜索对话框 —— 接入真实 API */
+    /** 在线搜索对话框 —— API 优先，离线兜底 */
     private void showOnlineSearchDialog() {
         View dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_online_search, null);
         EditText etKeyword = dialogView.findViewById(R.id.et_search_keyword);
@@ -182,25 +173,20 @@ public class SongListActivity extends AppCompatActivity {
         ProgressBar progress = dialogView.findViewById(R.id.progress_search);
 
         rvResults.setLayoutManager(new LinearLayoutManager(this));
+
+        // 点击"添加"按钮 → 仅保存元数据，不分配假音频
         SearchResultAdapter adapter = new SearchResultAdapter(result -> {
             Executors.newSingleThreadExecutor().execute(() -> {
                 Song song = new Song(result.title, result.artist, result.album);
-                // 为每个在线歌曲分配不同 demo 音源（SoundHelix）
-                String[] demoUrls = {
-                    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-                    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
-                    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
-                    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
-                    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
-                    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3"
-                };
-                String demoUrl = demoUrls[(int)(Math.random() * demoUrls.length)];
-                song.setRemoteUrl(demoUrl);
-                song.setLocalPath(demoUrl);
-                if (result.coverUrl != null && !result.coverUrl.isEmpty()) song.setCoverUrl(result.coverUrl);
-                AppDatabase.getInstance(this).songDao().insert(song);
+                // 有封面URL则设置
+                if (result.coverUrl != null && !result.coverUrl.isEmpty()) {
+                    song.setCoverUrl(result.coverUrl);
+                }
+                // 不设置 remoteUrl / localPath —— 无音频源，仅保存元数据
+                long id = AppDatabase.getInstance(SongListActivity.this).songDao().insert(song);
                 runOnUiThread(() -> {
-                    Toast.makeText(this, "已添加：" + result.title, Toast.LENGTH_SHORT).show();
+                    Toast.makeText(SongListActivity.this,
+                            "已添加：" + result.title + "（无试听音频）", Toast.LENGTH_SHORT).show();
                     viewModel.loadAllSongs();
                 });
             });
@@ -214,6 +200,7 @@ public class SongListActivity extends AppCompatActivity {
                 .create();
         dialog.show();
 
+        // 搜索按钮
         dialogView.findViewById(R.id.btn_search).setOnClickListener(v -> {
             String kw = etKeyword.getText().toString().trim();
             if (TextUtils.isEmpty(kw)) {
@@ -222,67 +209,74 @@ public class SongListActivity extends AppCompatActivity {
             }
             progress.setVisibility(View.VISIBLE);
 
-            // 优先使用真实 API，失败则用本地模拟
+            // 先尝试公网 API（真机可用），失败则用本地离线库
             Executors.newSingleThreadExecutor().execute(() -> {
                 try {
                     ApiClient.getMusicApi().searchSongs(kw, 20).enqueue(new retrofit2.Callback<SearchResponse>() {
                         @Override
-                        public void onResponse(retrofit2.Call<SearchResponse> call, retrofit2.Response<SearchResponse> response) {
+                        public void onResponse(retrofit2.Call<SearchResponse> call,
+                                               retrofit2.Response<SearchResponse> response) {
                             runOnUiThread(() -> progress.setVisibility(View.GONE));
-                            if (response.isSuccessful() && response.body() != null && response.body().result != null) {
+                            if (response.isSuccessful() && response.body() != null
+                                    && response.body().result != null
+                                    && response.body().result.songs != null
+                                    && !response.body().result.songs.isEmpty()) {
+                                // API 返回了真实结果
                                 List<SearchResponse.Song> songs = response.body().result.songs;
                                 List<OnlineSearchHelper.OnlineSongResult> results = new java.util.ArrayList<>();
                                 for (SearchResponse.Song s : songs) {
-                                    OnlineSearchHelper.OnlineSongResult r = new OnlineSearchHelper.OnlineSongResult(
-                                        s.name, s.getArtistName(), s.getAlbumName(),
-                                        s.al != null && s.al.picUrl != null ? s.al.picUrl : ""
-                                    );
-                                    results.add(r);
+                                    String cover = (s.al != null && s.al.picUrl != null) ? s.al.picUrl : "";
+                                    results.add(new OnlineSearchHelper.OnlineSongResult(
+                                            s.name, s.getArtistName(), s.getAlbumName(), cover));
                                 }
                                 runOnUiThread(() -> adapter.setResults(results));
                             } else {
-                                // API 失败，用本地模拟数据
-                                List<OnlineSearchHelper.OnlineSongResult> results = OnlineSearchHelper.search(kw);
-                                runOnUiThread(() -> {
-                                    adapter.setResults(results);
-                                    Toast.makeText(SongListActivity.this, "API 离线，使用本地数据", Toast.LENGTH_SHORT).show();
-                                });
+                                // API 无结果，用本地库
+                                fallbackToLocal(kw, adapter, progress);
                             }
                         }
 
                         @Override
                         public void onFailure(retrofit2.Call<SearchResponse> call, Throwable t) {
-                            runOnUiThread(() -> progress.setVisibility(View.GONE));
-                            // 网络失败，用本地模拟
-                            List<OnlineSearchHelper.OnlineSongResult> results = OnlineSearchHelper.search(kw);
-                            runOnUiThread(() -> {
-                                adapter.setResults(results);
-                                Toast.makeText(SongListActivity.this, "服务器未启动，使用本地数据", Toast.LENGTH_SHORT).show();
-                            });
+                            fallbackToLocal(kw, adapter, progress);
                         }
                     });
                 } catch (Exception e) {
-                    runOnUiThread(() -> progress.setVisibility(View.GONE));
-                    List<OnlineSearchHelper.OnlineSongResult> results = OnlineSearchHelper.search(kw);
-                    runOnUiThread(() -> adapter.setResults(results));
+                    fallbackToLocal(kw, adapter, progress);
                 }
             });
         });
     }
 
-    private void addSong(String title, String artist, String album, String url) {
+    /** 回退到本地离线歌曲库搜索 */
+    private void fallbackToLocal(String kw, SearchResultAdapter adapter, ProgressBar progress) {
+        List<OnlineSearchHelper.OnlineSongResult> results = OnlineSearchHelper.search(kw);
+        runOnUiThread(() -> {
+            progress.setVisibility(View.GONE);
+            adapter.setResults(results);
+            if (results.isEmpty()) {
+                Toast.makeText(SongListActivity.this, "未找到相关歌曲", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(SongListActivity.this,
+                        "本地匹配到 " + results.size() + " 首歌", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    /** 将歌曲元数据写入数据库 */
+    private void addSongToDb(String title, String artist, String album, String url) {
         Executors.newSingleThreadExecutor().execute(() -> {
-            AppDatabase db = AppDatabase.getInstance(this);
+            AppDatabase db = AppDatabase.getInstance(SongListActivity.this);
             Song song = new Song(title, artist, album);
             if (!TextUtils.isEmpty(url)) {
                 song.setRemoteUrl(url);
+                song.setLocalPath(url); // 如果是 http 链接，MusicService 会直接播放
             }
-            song.setLocalPath(null); // 没有本地文件
             db.songDao().insert(song);
 
             runOnUiThread(() -> {
-                Toast.makeText(this, "歌曲添加成功", Toast.LENGTH_SHORT).show();
-                viewModel.loadAllSongs(); // 刷新列表
+                Toast.makeText(SongListActivity.this, "歌曲添加成功", Toast.LENGTH_SHORT).show();
+                viewModel.loadAllSongs();
             });
         });
     }

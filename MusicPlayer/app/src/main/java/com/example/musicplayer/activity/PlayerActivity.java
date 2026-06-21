@@ -77,6 +77,15 @@ public class PlayerActivity extends AppCompatActivity implements SeekBar.OnSeekB
                 public void onSongChanged(Song song) {
                     runOnUiThread(() -> updateSongInfo(song));
                 }
+
+                @Override
+                public void onPlaybackError(Song song, String reason) {
+                    runOnUiThread(() -> {
+                        Toast.makeText(PlayerActivity.this,
+                                "无法播放：" + song.getTitle() + " — " + reason, Toast.LENGTH_SHORT).show();
+                        finish();
+                    });
+                }
             });
 
             // 准备播放

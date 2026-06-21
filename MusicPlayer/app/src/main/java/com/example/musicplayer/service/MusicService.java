@@ -37,6 +37,8 @@ public class MusicService extends Service {
         void onPlaybackStateChanged(boolean isPlaying);
         void onProgressChanged(long position, long duration);
         void onSongChanged(Song song);
+        /** 播放失败（无可用音频源） */
+        void onPlaybackError(Song song, String reason);
     }
 
     public class MusicBinder extends Binder {
@@ -88,7 +90,13 @@ public class MusicService extends Service {
         String path = song.getLocalPath();
 
         String mediaUri = findMediaUri(path, song.getTitle());
-        if (mediaUri == null) return;
+        if (mediaUri == null) {
+            // 通知 UI 层无可用音频源
+            if (callback != null) {
+                callback.onPlaybackError(song, "该歌曲无可用音频源");
+            }
+            return;
+        }
 
         MediaItem mediaItem = MediaItem.fromUri(mediaUri);
         player.setMediaItem(mediaItem);
