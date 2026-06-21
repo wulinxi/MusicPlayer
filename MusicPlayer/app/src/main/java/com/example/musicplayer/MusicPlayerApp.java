@@ -50,11 +50,14 @@ public class MusicPlayerApp extends Application {
             // 强制更新预置歌曲（修复旧数据库数据）
             String defaultCover = MusicFileHelper.getDefaultCoverPath(MusicPlayerApp.this);
 
-            // 清理无音频源的歌曲（在线搜索添加但无法获取音频的）
+            // 清理无音频源的歌曲
             int deleted = db.songDao().deleteSongsWithoutAudio();
             if (deleted > 0) {
                 android.util.Log.d("MusicPlayerApp", "已清理 " + deleted + " 首无音源歌曲");
             }
+
+            // 扫描 music 文件夹，新文件自动入库
+            syncLocalMusicFiles(db);
 
             List<Song> songs = db.songDao().getAllSongsSync();
 
@@ -87,6 +90,54 @@ public class MusicPlayerApp extends Application {
                 }
             }
         });
+    }
+
+    /**
+     * 扫描内部 music 目录，把还没入库的 MP3/FLAC 文件自动加进来
+     */
+    private void syncLocalMusicFiles(AppDatabase db) {
+        java.io.File musicDir = new java.io.File(getFilesDir(), "music");
+        if (!musicDir.exists() || !musicDir.isDirectory()) return;
+
+        java.io.File[] files = musicDir.listFiles((dir, name) ->
+                name.toLowerCase().endsWith(".mp3") ||
+                name.toLowerCase().endsWith(".flac") ||
+                name.toLowerCase().endsWith(".wav") ||
+                name.toLowerCase().endsWith(".ogg") ||
+                name.toLowerCase().endsWith(".aac"));
+        if (files == null || files.length == 0) return;
+
+        java.util.List<Song> existing = db.songDao().getAllSongsSync();
+        java.util.Set<String> existingPaths = new java.util.HashSet<>();
+        if (existing != null) {
+            for (Song s : existing) {
+                if (s.getLocalPath() != null) existingPaths.add(s.getLocalPath());
+            }
+        }
+
+        String defaultCover = MusicFileHelper.getDefaultCoverPath(this);
+        int added = 0;
+        for (java.io.File f : files) {
+            if (existingPaths.contains(f.getName())) continue;
+
+            String name = f.getName().replaceAll("\\.(mp3|flac|wav|ogg|aac)$", "");
+            String title = name;
+            String artist = "未知歌手";
+            if (name.contains(" - ")) {
+                String[] parts = name.split(" - ", 2);
+                artist = parts[0].trim();
+                title = parts[1].trim();
+            }
+
+            Song song = new Song(title, artist, "");
+            song.setLocalPath(f.getName());
+            if (defaultCover != null) song.setCoverPath(defaultCover);
+            db.songDao().insert(song);
+            added++;
+        }
+        if (added > 0) {
+            android.util.Log.d("MusicPlayerApp", "同步了 " + added + " 首新歌曲");
+        }
     }
 
     private void createNotificationChannel() {
