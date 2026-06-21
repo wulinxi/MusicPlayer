@@ -161,4 +161,54 @@ public class MusicFileHelper {
             return new String[0];
         }
     }
+
+    /**
+     * 扫描内部 music 目录，新文件自动入库
+     * @return 新增歌曲数量
+     */
+    public static int syncMusicFolder(Context context) {
+        java.io.File musicDir = getMusicDir(context);
+        if (!musicDir.exists() || !musicDir.isDirectory()) return 0;
+
+        java.io.File[] files = musicDir.listFiles((dir, name) ->
+                name.toLowerCase().endsWith(".mp3") ||
+                name.toLowerCase().endsWith(".flac") ||
+                name.toLowerCase().endsWith(".wav") ||
+                name.toLowerCase().endsWith(".ogg") ||
+                name.toLowerCase().endsWith(".aac"));
+        if (files == null || files.length == 0) return 0;
+
+        com.example.musicplayer.database.AppDatabase db =
+                com.example.musicplayer.database.AppDatabase.getInstance(context);
+        java.util.List<com.example.musicplayer.model.Song> existing = db.songDao().getAllSongsSync();
+        java.util.Set<String> existingPaths = new java.util.HashSet<>();
+        if (existing != null) {
+            for (com.example.musicplayer.model.Song s : existing) {
+                if (s.getLocalPath() != null) existingPaths.add(s.getLocalPath());
+            }
+        }
+
+        String defaultCover = getDefaultCoverPath(context);
+        int added = 0;
+        for (java.io.File f : files) {
+            if (existingPaths.contains(f.getName())) continue;
+
+            String name = f.getName().replaceAll("\\.(mp3|flac|wav|ogg|aac)$", "");
+            String title = name;
+            String artist = "未知歌手";
+            if (name.contains(" - ")) {
+                String[] parts = name.split(" - ", 2);
+                artist = parts[0].trim();
+                title = parts[1].trim();
+            }
+
+            com.example.musicplayer.model.Song song =
+                    new com.example.musicplayer.model.Song(title, artist, "");
+            song.setLocalPath(f.getName());
+            if (defaultCover != null) song.setCoverPath(defaultCover);
+            db.songDao().insert(song);
+            added++;
+        }
+        return added;
+    }
 }

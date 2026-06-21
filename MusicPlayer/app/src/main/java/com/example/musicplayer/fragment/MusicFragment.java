@@ -80,6 +80,23 @@ public class MusicFragment extends Fragment {
         observeData();
     }
 
+    @Override
+    public void onResume() {
+        super.onResume();
+        // 每次回到这个Tab自动扫描music文件夹
+        if (getContext() != null) {
+            Executors.newSingleThreadExecutor().execute(() -> {
+                int n = com.example.musicplayer.util.MusicFileHelper.syncMusicFolder(getContext());
+                if (n > 0 && getActivity() != null) {
+                    getActivity().runOnUiThread(() -> {
+                        // LiveData自动刷新列表
+                        Toast.makeText(getContext(), "发现 " + n + " 首新歌", Toast.LENGTH_SHORT).show();
+                    });
+                }
+            });
+        }
+    }
+
     private void initViews(View view) {
         // 查看全部
         view.findViewById(R.id.btn_view_all).setOnClickListener(v -> {
