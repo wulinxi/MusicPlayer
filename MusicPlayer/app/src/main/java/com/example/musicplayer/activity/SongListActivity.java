@@ -30,6 +30,7 @@ import com.example.musicplayer.api.OnlineSearchHelper;
 import com.example.musicplayer.api.SearchResponse;
 import com.example.musicplayer.database.AppDatabase;
 import com.example.musicplayer.model.Song;
+import com.example.musicplayer.util.NcmDecoder;
 import com.example.musicplayer.viewmodel.SongListViewModel;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
@@ -185,7 +186,7 @@ public class SongListActivity extends AppCompatActivity {
                         AppDatabase.getInstance(this).songDao().insert(pendingSong);
                         runOnUiThread(() -> {
                             Toast.makeText(this, "请选择 " + title + " 的MP3文件", Toast.LENGTH_LONG).show();
-                            filePickerLauncher.launch(new String[]{"audio/*"});
+                            filePickerLauncher.launch(new String[]{"audio/*", "application/octet-stream", "*/*"});
                         });
                     });
                 })
@@ -215,7 +216,7 @@ public class SongListActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     Toast.makeText(SongListActivity.this,
                             "请选择 " + result.title + " 的MP3文件", Toast.LENGTH_LONG).show();
-                    filePickerLauncher.launch(new String[]{"audio/*"});
+                    filePickerLauncher.launch(new String[]{"audio/*", "application/octet-stream", "*/*"});
                 });
             });
         });
@@ -251,48 +252,78 @@ public class SongListActivity extends AppCompatActivity {
         });
     }
 
-    /** 文件选择器回调：复制选中的 MP3 到应用内部存储 */
+    /** 文件选择器回调：复制MP3 或 解密NCM */
     private void onFilePicked(Uri uri) {
         if (uri == null || pendingSong == null) return;
 
+        String fileName = getFileName(uri);
+        final boolean isNcm = fileName != null && fileName.toLowerCase().endsWith(".ncm");
+        final String fName = fileName;
+
         Executors.newSingleThreadExecutor().execute(() -> {
             try {
-                // 获取文件名
-                String fileName = getFileName(uri);
-                if (fileName == null || !fileName.toLowerCase().endsWith(".mp3")) {
-                    fileName = pendingSong.getTitle() + " - " + pendingSong.getArtist() + ".mp3";
-                }
-
-                // 复制到应用内部 music 目录
                 File musicDir = new File(getFilesDir(), "music");
                 if (!musicDir.exists()) musicDir.mkdirs();
-                File targetFile = new File(musicDir, fileName);
 
-                try (InputStream in = getContentResolver().openInputStream(uri);
-                     FileOutputStream out = new FileOutputStream(targetFile)) {
-                    byte[] buf = new byte[8192];
-                    int len;
-                    while ((len = in.read(buf)) > 0) {
-                        out.write(buf, 0, len);
+                final String[] outFileName = new String[1];
+                final byte[][] coverBytes = new byte[1][];
+
+                if (isNcm) {
+                    // === 解密 .ncm → .mp3/flac ===
+                    try (InputStream in = getContentResolver().openInputStream(uri)) {
+                        NcmDecoder.DecodeResult result = NcmDecoder.decode(in);
+                        outFileName[0] = pendingSong.getTitle() + " - " + pendingSong.getArtist() + "." + result.format;
+                        File targetFile = new File(musicDir, outFileName[0]);
+                        try (FileOutputStream out = new FileOutputStream(targetFile)) {
+                            out.write(result.musicData);
+                        }
+                        coverBytes[0] = result.coverData;
                     }
+                } else {
+                    // === 直接复制音频文件 ===
+                    String name = (fName != null) ? fName
+                            : pendingSong.getTitle() + " - " + pendingSong.getArtist() + ".mp3";
+                    outFileName[0] = name;
+                    File targetFile = new File(musicDir, outFileName[0]);
+                    try (InputStream in = getContentResolver().openInputStream(uri);
+                         FileOutputStream out = new FileOutputStream(targetFile)) {
+                        byte[] buf = new byte[8192];
+                        int len;
+                        while ((len = in.read(buf)) > 0) {
+                            out.write(buf, 0, len);
+                        }
+                    }
+                }
+
+                // NCM 内嵌封面
+                if (coverBytes[0] != null && coverBytes[0].length > 0) {
+                    File coversDir = new File(getFilesDir(), "covers");
+                    if (!coversDir.exists()) coversDir.mkdirs();
+                    String coverName = pendingSong.getTitle() + "_cover.jpg";
+                    try (FileOutputStream out = new FileOutputStream(new File(coversDir, coverName))) {
+                        out.write(coverBytes[0]);
+                    }
+                    pendingSong.setCoverPath(new File(coversDir, coverName).getAbsolutePath());
                 }
 
                 // 更新数据库
                 AppDatabase db = AppDatabase.getInstance(SongListActivity.this);
-                pendingSong.setLocalPath(fileName);
-                pendingSong.setRemoteUrl(null); // 本地文件，清掉远程URL
+                pendingSong.setLocalPath(outFileName[0]);
+                pendingSong.setRemoteUrl(null);
                 db.songDao().update(pendingSong);
 
+                String tag = isNcm ? " [NCM已解密]" : "";
+                String msg = "✅ " + pendingSong.getTitle() + tag + " 可以播放！";
                 runOnUiThread(() -> {
-                    Toast.makeText(SongListActivity.this,
-                            "✅ " + pendingSong.getTitle() + " 已添加，可以播放！", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(SongListActivity.this, msg, Toast.LENGTH_SHORT).show();
                     viewModel.loadAllSongs();
                     pendingSong = null;
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
                     Toast.makeText(SongListActivity.this,
-                            "导入失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            (isNcm ? "NCM解密" : "导入") + "失败: " + e.getMessage(),
+                            Toast.LENGTH_LONG).show();
                 });
             }
         });
