@@ -77,4 +77,8 @@ public interface SongDao {
     /** 获取最近新增歌曲 */
     @Query("SELECT * FROM songs ORDER BY created_at DESC LIMIT 20")
     LiveData<List<Song>> getRecentSongs();
+
+    /** 删除所有无音频源的歌曲（无 remoteUrl 且无 localPath） */
+    @Query("DELETE FROM songs WHERE (remote_url IS NULL OR remote_url = '') AND (local_path IS NULL OR local_path = '')")
+    int deleteSongsWithoutAudio();
 }

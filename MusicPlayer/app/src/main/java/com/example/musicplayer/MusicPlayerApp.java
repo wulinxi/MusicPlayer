@@ -49,6 +49,13 @@ public class MusicPlayerApp extends Application {
 
             // 强制更新预置歌曲（修复旧数据库数据）
             String defaultCover = MusicFileHelper.getDefaultCoverPath(MusicPlayerApp.this);
+
+            // 清理无音频源的歌曲（在线搜索添加但无法获取音频的）
+            int deleted = db.songDao().deleteSongsWithoutAudio();
+            if (deleted > 0) {
+                android.util.Log.d("MusicPlayerApp", "已清理 " + deleted + " 首无音源歌曲");
+            }
+
             List<Song> songs = db.songDao().getAllSongsSync();
 
             if (songs == null || songs.isEmpty()) {
