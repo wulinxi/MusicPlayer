@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 网络权限 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- 存储权限（Android 10 以上不需要外部存储） -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!-- 前台Service权限 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- 唤醒锁（播放时不锁屏） -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <application
+        android:name=".MusicPlayerApp"
+        android:allowBackup="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:label="@string/app_name"
+        android:roundIcon="@drawable/ic_launcher_foreground"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.MusicPlayer"
+        android:usesCleartextTraffic="true"
+        tools:targetApi="34">
+
+        <!-- 启动页 -->
+        <activity
+            android:name=".activity.SplashActivity"
+            android:exported="true"
+            android:theme="@style/Theme.MusicPlayer.Splash">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 登录页 -->
+        <activity
+            android:name=".activity.LoginActivity"
+            android:exported="false" />
+
+        <!-- 注册页 -->
+        <activity
+            android:name=".activity.RegisterActivity"
+            android:exported="false" />
+
+        <!-- 主界面 -->
+        <activity
+            android:name=".activity.MainActivity"
+            android:exported="false"
+            android:launchMode="singleTask" />
+
+        <!-- 播放器页 -->
+        <activity
+            android:name=".activity.PlayerActivity"
+            android:exported="false" />
+
+        <!-- 歌曲详情页 -->
+        <activity
+            android:name=".activity.SongDetailActivity"
+            android:exported="false" />
+
+        <!-- 歌单列表页 -->
+        <activity
+            android:name=".activity.SongListActivity"
+            android:exported="false" />
+
+        <!-- 后台播放 Service -->
+        <service
+            android:name=".service.MusicService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
+
+        <!-- 耳机拔出广播接收器 -->
+        <receiver
+            android:name=".receiver.HeadphoneReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.HEADSET_PLUG" />
+                <action android:name="android.media.AUDIO_BECOMING_NOISY" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+
+</manifest>
