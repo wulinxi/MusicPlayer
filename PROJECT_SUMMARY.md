@@ -2,7 +2,8 @@
 
 > **开发日期：** 2026年6月20日 — 21日  
 > **项目路径：** `D:\claude\安卓应用开发\MusicPlayer\`  
-> **APK 文件：** `D:\claude\安卓应用开发\音乐星球2.apk` (约 55MB)
+> **GitHub 仓库：** https://github.com/wulinxi/MusicPlayer  
+> **APK 文件：** `MusicPlayer/app/build/outputs/apk/debug/app-debug.apk` (约 51MB)
 
 ---
 
@@ -281,33 +282,54 @@ ObjectAnimator.ofFloat(ivCover, "rotation", 0f, 360f);
 // 播放时 start() / 暂停时 pause()
 ```
 
-### 6.3 在线搜索 + 离线回退
+### 6.3 本地音乐自动同步
 ```
-用户搜索 → Retrofit API (http://10.0.2.2:3000/search)
-         ├── 成功 → 解析 SearchResponse → 展示结果
-         └── 失败 → OnlineSearchHelper.search(keyword) → 本地模拟数据
+App启动 / 切换到「我的音乐」Tab → 扫描 filesDir/music/
+    ├── 新文件 → 自动入库（文件名格式「歌手 - 歌名.mp3」）
+    └── 已存在 → 跳过
 ```
-- **API 端点：** 本地 Node.js 服务器（模拟器用 10.0.2.2 映射 localhost）
-- **离线歌曲库：** 陈奕迅、周杰伦、林俊杰、邓紫棋、薛之谦、五月天等 30+ 首模拟数据
-- **Demo 音源：** SoundHelix 公开 MP3（6首，轮换分配给在线歌曲）
+- **实现：** `MusicFileHelper.syncMusicFolder()` — 公共静态方法
+- **触发时机：** MusicPlayerApp.onCreate() + MusicFragment.onResume()
+- **支持格式：** mp3 / flac / wav / ogg / aac
 
-### 6.4 歌词同步
+### 6.4 NCM 文件自动解密
+- **实现：** `NcmDecoder.java` — 纯 Java 移植 ncmdump 解密算法
+- **算法流程：** RC4密钥解密 → AES-128-ECB → XOR → RC4音乐数据解密
+- **触发：** 文件选择器选择 .ncm 文件时自动识别、解密为 .mp3/.flac
+- **附加功能：** 同时提取 NCM 内嵌专辑封面图片
+- **无需外部工具：** 不再依赖 ncmdump.exe，Android 端原生解密
+
+### 6.5 本地文件导入
+- **📂 导入本地按钮：** 「我的音乐」顶部直接弹文件选择器 → 选 MP3/NCM
+- **文件选择器：** ActivityResultContracts.OpenDocument，无需存储权限
+- **NCM 处理：** 自动解密 + 自动提取封面
+- **歌名解析：** 文件名 `歌手 - 歌名.xxx` 自动拆为演唱者和标题
+
+### 6.6 在线搜索（本地离线库）
+- **搜索库：** OnlineSearchHelper 内置 160+ 首歌曲（20+ 位歌手）
+- **搜索策略：** 歌手名匹配 → 歌名模糊匹配 → 单字匹配
+- **API 备用：** Retrofit 连接公网 Vercel NeteaseCloudMusicApi（真机可用）
+- **无假音频：** 在线添加的歌曲不分配假 URL，改为提示用户选择本地文件
+
+### 6.7 歌词同步
 - **实现：** `LyricsHelper` — LinkedHashMap 存储时间(秒) → 歌词行
 - **预置歌词：** 4首陈奕迅歌曲的完整歌词
 - **实时匹配：** 播放进度回调 → getLyricsLine(title, seconds) → 查找对应行
 
-### 6.5 资产文件管理 (MusicFileHelper)
+### 6.8 资产文件管理 (MusicFileHelper)
 - **首次启动：** 将 `assets/music/`、`assets/covers/`、`assets/backgrounds/` 复制到内部存储 `filesDir`
 - **已存在跳过：** 避免重复复制
 - **路径管理：** 提供统一的 getMusicDir / getCoversDir / getDefaultCoverPath 等方法
 
-### 6.6 数据库初始化逻辑 (MusicPlayerApp)
+### 6.9 数据库初始化与自动清理
 1. 创建通知渠道（CHANNEL_ID = "music_playback"）
 2. 复制 assets 音乐文件到内部存储
-3. 检查并创建测试用户（admin / 123456 / 音乐爱好者）
-4. 预置或修补歌曲数据（4首陈奕迅歌曲 + 封面路径修正）
+3. 扫描本地音乐文件夹同步新歌
+4. 清理无音源歌曲（deleteSongsWithoutAudio）
+5. 检查并创建测试用户（admin / 123456 / 音乐爱好者）
+6. 预置或修补歌曲数据（封面路径修正）
 
-### 6.7 ViewModel 异步模式
+### 6.10 ViewModel 异步模式
 - 所有数据库操作在 `Executors.newSingleThreadExecutor()` 中执行
 - 结果通过 `LiveData.postValue()` / `MutableLiveData` 通知 UI
 - 避免主线程阻塞
@@ -316,13 +338,19 @@ ObjectAnimator.ofFloat(ivCover, "rotation", 0f, 360f);
 
 ## 7. 资源与素材
 
-### 预置歌曲（assets/music/）
-| 歌曲 | 歌手 | 专辑 | 来源 |
-|------|------|------|------|
-| 孤独患者 | 陈奕迅 | ? | ncmdump 解密 .ncm → .mp3 |
-| 最佳损友 | 陈奕迅 | Life Continues... | ncmdump 解密 |
-| 盲婚哑嫁 | 陈奕迅 | The Code | ncmdump 解密 |
-| 粤语残片 | 陈奕迅 | What's Going On...? | ncmdump 解密 |
+### 歌曲文件
+| 歌曲 | 歌手 | 来源 |
+|------|------|------|
+| 孤独患者 | 陈奕迅 | ncmdump 解密 |
+| 最佳损友 | 陈奕迅 | ncmdump 解密 |
+| 盲婚哑嫁 The Code | 陈奕迅 | ncmdump 解密 |
+| 粤语残片 | 陈奕迅 | ncmdump 解密 |
+| Amani | Beyond | ncmdump 解密 |
+| 唯一 | G.E.M.邓紫棋 | ncmdump 解密 |
+| 多远都要在一起 | G.E.M.邓紫棋 | ncmdump 解密 |
+| 海阔天空 | G.E.M.邓紫棋 | ncmdump 解密 |
+
+> 以上 8 首歌均已从 .ncm 解密为 .mp3，存放在 `music/` 目录及 App 内部存储。
 
 ### 图片资源
 - `assets/covers/default_cover.jpg` — 默认歌曲封面
@@ -427,7 +455,29 @@ ObjectAnimator.ofFloat(ivCover, "rotation", 0f, 360f);
 
 ### 阶段十一：构建与调试
 61. ✅ 安装在 Android 设备/模拟器
-62. ✅ 构建 APK（音乐星球2.apk，55MB）
+62. ✅ 构建 APK（app-debug.apk，51MB）
+
+### 阶段十二：联网搜索修复（6月21日）
+63. ✅ ApiClient BASE_URL 从模拟器地址 10.0.2.2 → 公网 Vercel API（真机可用）
+64. ✅ 增加 8 秒超时 + API 不可达自动回退本地库
+65. ✅ OnlineSearchHelper 歌曲库从 30 首扩充到 160+ 首（20+ 位歌手）
+66. ✅ 去掉 SoundHelix 假 demo 音频 URL
+67. ✅ 添加歌曲流程改为：搜歌 → 弹文件选择器 → 选本地 MP3 → 可播放
+68. ✅ MusicService 新增 onPlaybackError 回调，无音频时 Toast 提示
+69. ✅ fragment_music.xml 分隔线从灰色改为半透明
+
+### 阶段十三：NCM 解密与本地导入（6月21日）
+70. ✅ 新增 NcmDecoder.java — 纯 Java NCM→MP3 解密（RC4 + AES-128-ECB）
+71. ✅ 文件选择器自动识别 .ncm 后缀，自动解密并提取封面
+72. ✅ 「我的音乐」新增 📂导入本地 按钮，一键选文件导入
+73. ✅ 文件名自动解析「歌手 - 歌名」格式
+74. ✅ music 文件夹 .ncm 全部解密为 .mp3（8首）
+75. ✅ 启动时自动扫描 music 目录同步新文件
+76. ✅ MusicFragment.onResume 实时扫描，切 Tab 自动更新
+77. ✅ 热门推荐按 play_count DESC 排序（点越多越靠前）
+78. ✅ 清理无音源歌曲（deleteSongsWithoutAudio）
+79. ✅ GitHub 仓库建立并持续推送（ssh.github.com:443）
+80. ✅ 无音频歌曲列表显示橙色「无音频」标签
 
 ---
 
@@ -437,11 +487,11 @@ ObjectAnimator.ofFloat(ivCover, "rotation", 0f, 360f);
 
 | 类别 | 数量 | 文件 |
 |------|------|------|
-| **Java 源文件** | 36 | Activity(6) + Fragment(3) + ViewModel(6) + Model(5) + DAO(5) + Database(1) + Adapter(4) + Service(1) + Receiver(1) + API(3) + Util(2) + Application(1) |
+| **Java 源文件** | 37 | Activity(6) + Fragment(3) + ViewModel(6) + Model(5) + DAO(5) + Database(1) + Adapter(4) + Service(1) + Receiver(1) + API(3) + Util(3) + Application(1) |
 | **布局文件 (XML)** | 13 | activity_* + fragment_* + item_* + dialog_* |
 | **资源文件 (XML)** | 24 | drawable(18) + values(3) + menu(1) |
 | **Gradle 配置** | 3 | build.gradle ×2 + settings.gradle |
-| **资源文件 (非代码)** | 6 | mp3(4) + jpg(2) |
+| **资源文件 (非代码)** | 8 | mp3(8) + jpg(2) |
 
 ### 代码量估算
 
@@ -456,22 +506,24 @@ ObjectAnimator.ofFloat(ivCover, "rotation", 0f, 360f);
 | Service | ~250 行 |
 | API / Util | ~300 行 |
 | XML 布局 | ~800 行 |
-| **总计** | **~3900 行** |
+| **总计** | **~4500 行** |
 
 ---
 
 ## 🔧 技术亮点
 
 1. **MVVM 架构清晰分离** — ViewModel + LiveData + Room 异步查询
-2. **智能音频源查找** — 远程URL → 本地精确 → 模糊搜索 多级回退
-3. **在线搜索 + 离线回退** — API 优先，失败自动降级到本地模拟数据
-4. **CD封面旋转动画** — ObjectAnimator 无缝衔接播放/暂停状态
-5. **歌词实时同步** — LinkedHashMap 时间轴匹配
-6. **前台Service** — 后台播放 + 通知栏控制
-7. **DiffUtil 优化** — ListAdapter 实现高效列表更新
-8. **数据库外键级联** — 用户删除自动清理关联数据
-9. **错误兜底处理** — Fragment/Activity 加载失败有 Toast 提示而非崩溃
-10. **单例模式** — AppDatabase 双重检查锁，Retrofit 单例
+2. **NCM 原生解密** — 纯 Java 实现 NCM→MP3 解密，无需外部工具
+3. **智能音频源查找** — 远程URL → 本地精确 → 模糊搜索 多级回退
+4. **本地文件即时同步** — 启动/切Tab 自动扫描 music 目录入库
+5. **在线搜索 + 离线回退** — API 优先，失败降级 160+ 首本地库
+6. **CD封面旋转动画** — ObjectAnimator 无缝衔接播放/暂停状态
+7. **歌词实时同步** — LinkedHashMap 时间轴匹配
+8. **前台Service** — 后台播放 + 通知栏控制
+9. **DiffUtil 优化** — ListAdapter 实现高效列表更新
+10. **数据库外键级联** — 用户删除自动清理关联数据
+11. **错误兜底处理** — Fragment/Activity 加载失败有 Toast 提示而非崩溃
+12. **单例模式** — AppDatabase 双重检查锁，Retrofit 单例
 
 ---
 
@@ -479,16 +531,19 @@ ObjectAnimator.ofFloat(ivCover, "rotation", 0f, 360f);
 
 ```
 D:\claude\安卓应用开发\
-├── 音乐星球2.apk                    ← 构建产物
+├── MusicPlayer\                     ← Android 项目源码
+│   └── app/build/outputs/apk/debug/
+│       └── app-debug.apk            ← 最新构建产物 (51MB)
 ├── PROJECT_SUMMARY.md               ← 本文件
-├── ncmdump.zip                      ← ncmdump 工具包
-├── ncmdump_tool\ncmdump.exe         ← .ncm 解密工具
-├── music\                           ← 原始 .ncm 文件
+├── music\                           ← 8首 .mp3 歌曲
 ├── pic\                             ← 图片素材
-├── NeteaseCloudMusicApi\            ← (空目录，预留给 API 服务)
-└── MusicPlayer\                     ← Android 项目源码
+├── ncmdump_tool\ncmdump.exe         ← .ncm 解密工具（备选）
+├── NeteaseCloudMusicApi\            ← (预留 API 服务目录)
+└── .gitignore                       ← Git 排除规则
 ```
 
 ---
 
-> **注：** 此文档基于项目代码逆向分析生成。由于项目没有 Git 版本历史，各功能的开发顺序为逻辑推断。如需精确记录后续开发过程，建议启用 Git 版本管理。
+> **Git 仓库：** https://github.com/wulinxi/MusicPlayer  
+> **首次提交：** 2026年6月21日 | **最新提交：** 2026年6月21日  
+> **分支：** main | **文件数：** 108+
