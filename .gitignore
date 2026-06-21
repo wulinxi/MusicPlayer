@@ -2,7 +2,7 @@
 *.zip
 Android-studio/
 NeteaseCloudMusicApi/
-music/
+/music/
 ncmdump_tool/
 .claude/
 .gradle/
