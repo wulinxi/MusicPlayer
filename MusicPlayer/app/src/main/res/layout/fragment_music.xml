@@ -64,12 +64,12 @@
             android:layout_marginHorizontal="16dp"
             android:layout_marginTop="8dp" />
 
-        <!-- 分隔 -->
+        <!-- 分隔（半透明，不显突兀） -->
         <View
             android:layout_width="match_parent"
-            android:layout_height="8dp"
+            android:layout_height="1dp"
             android:layout_marginTop="12dp"
-            android:background="@color/divider" />
+            android:background="#33FFFFFF" />
 
         <!-- 全部歌曲 -->
         <LinearLayout

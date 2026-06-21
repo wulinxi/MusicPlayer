@@ -45,4 +45,16 @@
 
     </LinearLayout>
 
+    <TextView
+        android:id="@+id/tv_no_audio"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="6dp"
+        android:paddingVertical="2dp"
+        android:text="无音频"
+        android:textColor="#FF9800"
+        android:textSize="10sp"
+        android:background="#20FF9800"
+        android:visibility="gone" />
+
 </LinearLayout>

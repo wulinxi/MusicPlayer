@@ -56,20 +56,25 @@ public class SongItemAdapter extends ListAdapter<Song, SongItemAdapter.ViewHolde
         Song song = getItem(position);
         holder.tvTitle.setText(song.getTitle());
         holder.tvArtist.setText(song.getArtist());
-        // 序号
         holder.tvIndex.setText(String.valueOf(position + 1));
+
+        // 无音频源时显示标记
+        boolean hasAudio = (song.getRemoteUrl() != null && !song.getRemoteUrl().isEmpty())
+                || (song.getLocalPath() != null && !song.getLocalPath().isEmpty());
+        holder.tvNoAudio.setVisibility(hasAudio ? View.GONE : View.VISIBLE);
 
         holder.itemView.setOnClickListener(v -> listener.onSongClick(song));
     }
 
     static class ViewHolder extends RecyclerView.ViewHolder {
-        TextView tvIndex, tvTitle, tvArtist;
+        TextView tvIndex, tvTitle, tvArtist, tvNoAudio;
 
         ViewHolder(View itemView) {
             super(itemView);
             tvIndex = itemView.findViewById(R.id.tv_index);
             tvTitle = itemView.findViewById(R.id.tv_title);
             tvArtist = itemView.findViewById(R.id.tv_artist);
+            tvNoAudio = itemView.findViewById(R.id.tv_no_audio);
         }
     }
 }

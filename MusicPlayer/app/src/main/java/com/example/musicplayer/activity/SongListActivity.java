@@ -174,19 +174,26 @@ public class SongListActivity extends AppCompatActivity {
 
         rvResults.setLayoutManager(new LinearLayoutManager(this));
 
-        // 点击"添加"按钮 → 仅保存元数据，不分配假音频
+        // 点击"添加"按钮 → 先尝试获取真实音频URL，再保存
         SearchResultAdapter adapter = new SearchResultAdapter(result -> {
             Executors.newSingleThreadExecutor().execute(() -> {
                 Song song = new Song(result.title, result.artist, result.album);
-                // 有封面URL则设置
                 if (result.coverUrl != null && !result.coverUrl.isEmpty()) {
                     song.setCoverUrl(result.coverUrl);
                 }
-                // 不设置 remoteUrl / localPath —— 无音频源，仅保存元数据
-                long id = AppDatabase.getInstance(SongListActivity.this).songDao().insert(song);
+
+                // 尝试从 API 获取真实播放 URL
+                String audioUrl = fetchAudioUrl(result.songId);
+                if (audioUrl != null && !audioUrl.isEmpty()) {
+                    song.setRemoteUrl(audioUrl);
+                    song.setLocalPath(audioUrl);
+                }
+
+                AppDatabase.getInstance(SongListActivity.this).songDao().insert(song);
                 runOnUiThread(() -> {
-                    Toast.makeText(SongListActivity.this,
-                            "已添加：" + result.title + "（无试听音频）", Toast.LENGTH_SHORT).show();
+                    String msg = audioUrl != null ? "已添加：" + result.title + " ✅可播放"
+                                                  : "已添加：" + result.title + "（仅元数据）";
+                    Toast.makeText(SongListActivity.this, msg, Toast.LENGTH_SHORT).show();
                     viewModel.loadAllSongs();
                 });
             });
@@ -227,7 +234,7 @@ public class SongListActivity extends AppCompatActivity {
                                 for (SearchResponse.Song s : songs) {
                                     String cover = (s.al != null && s.al.picUrl != null) ? s.al.picUrl : "";
                                     results.add(new OnlineSearchHelper.OnlineSongResult(
-                                            s.name, s.getArtistName(), s.getAlbumName(), cover));
+                                            s.name, s.getArtistName(), s.getAlbumName(), cover, s.id));
                                 }
                                 runOnUiThread(() -> adapter.setResults(results));
                             } else {
@@ -261,6 +268,28 @@ public class SongListActivity extends AppCompatActivity {
                         "本地匹配到 " + results.size() + " 首歌", Toast.LENGTH_SHORT).show();
             }
         });
+    }
+
+    /**
+     * 尝试从 API 获取歌曲的真实播放 URL（同步阻塞，在后台线程调用）
+     */
+    private String fetchAudioUrl(long songId) {
+        if (songId <= 0) return null;
+        try {
+            retrofit2.Response<com.example.musicplayer.api.MusicApiService.SongUrlResponse> resp =
+                    ApiClient.getMusicApi().getSongUrl(songId).execute();
+            if (resp.isSuccessful() && resp.body() != null
+                    && resp.body().data != null && !resp.body().data.isEmpty()) {
+                for (com.example.musicplayer.api.MusicApiService.SongUrlResponse.UrlData d : resp.body().data) {
+                    if (d.url != null && !d.url.isEmpty()) {
+                        return d.url;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // API 不可达，返回 null
+        }
+        return null;
     }
 
     /** 将歌曲元数据写入数据库 */

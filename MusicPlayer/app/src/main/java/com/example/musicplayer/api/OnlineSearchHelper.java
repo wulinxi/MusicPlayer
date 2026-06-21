@@ -298,7 +298,7 @@ public class OnlineSearchHelper {
                 for (SongEntry s : entry.getValue()) {
                     results.add(new OnlineSongResult(
                         s.title, entry.getKey(), s.album,
-                        getCoverUrl(entry.getKey(), s.id)
+                        getCoverUrl(entry.getKey(), s.id), s.id
                     ));
                 }
             }
@@ -310,7 +310,7 @@ public class OnlineSearchHelper {
                 if (s.title.toLowerCase().contains(kw) && !containsSong(results, s.title, entry.getKey())) {
                     results.add(new OnlineSongResult(
                         s.title, entry.getKey(), s.album,
-                        getCoverUrl(entry.getKey(), s.id)
+                        getCoverUrl(entry.getKey(), s.id), s.id
                     ));
                 }
             }
@@ -323,7 +323,7 @@ public class OnlineSearchHelper {
                     if (containsAnyChar(s.title, kw) && !containsSong(results, s.title, entry.getKey())) {
                         results.add(new OnlineSongResult(
                             s.title, entry.getKey(), s.album,
-                            getCoverUrl(entry.getKey(), s.id)
+                            getCoverUrl(entry.getKey(), s.id), s.id
                         ));
                     }
                 }
@@ -381,19 +381,27 @@ public class OnlineSearchHelper {
     }
 
     /**
-     * 在线歌曲结果（仅元数据，不含音频）
+     * 在线歌曲结果（元数据 + 歌曲ID，不含音频）
+     * 添加时会用 songId 从 API 获取真实播放 URL
      */
     public static class OnlineSongResult {
         public String title;
         public String artist;
         public String album;
         public String coverUrl;
+        public long songId;
 
-        public OnlineSongResult(String title, String artist, String album, String coverUrl) {
+        public OnlineSongResult(String title, String artist, String album, String coverUrl, long songId) {
             this.title = title;
             this.artist = artist;
             this.album = album;
             this.coverUrl = coverUrl;
+            this.songId = songId;
+        }
+
+        /** 兼容旧构造器（无 songId） */
+        public OnlineSongResult(String title, String artist, String album, String coverUrl) {
+            this(title, artist, album, coverUrl, 0);
         }
     }
 }
